@@ -1,0 +1,26 @@
+[project]
+name = "pymeineta"
+version = "1.0.0"
+description = "A Python library for interacting with meinETA REST API"
+readme = "README.md"
+authors = [
+    { name="Tobias Lechenauer", email="tobiaslechenauer@gmail.com" }
+]
+license = "MIT"
+homepage = "https://github.com/Lechtob/pymeineta"
+requires-python = ">=3.9"
+
+[project.urls]
+"Source" = "https://github.com/Lechtob/pymeineta"
+"Tracker" = "https://github.com/Lechtob/pymeineta/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+
+
