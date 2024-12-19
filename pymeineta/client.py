@@ -5,13 +5,19 @@ import aiohttp
 import xmltodict
 from xml.parsers.expat import ExpatError
 
-from .exceptions import MeinETAError, ConnectionError, ParsingError, InvalidResponseError
+from .exceptions import (
+    MeinETAError,
+    ConnectionError,
+    ParsingError,
+    InvalidResponseError,
+)
 
 logger = logging.getLogger(__name__)
 
+
 class MeinETAClient:
     """Asynchronous client for the meinETA local REST API.
-    
+
     This client provides the core functionality to:
     - Check connectivity to the meinETA device.
     - Retrieve available sensors (URIs) from the menu structure.
@@ -44,16 +50,23 @@ class MeinETAClient:
         :raises ConnectionError: If request fails or returns a non-200 status.
         """
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self._timeout)) as session:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self._timeout)
+            ) as session:
                 async with session.get(self._menu_url) as resp:
                     if resp.status == 200:
                         logger.info("Connection test successful.")
                         return True
                     else:
-                        raise ConnectionError(f"Connection test failed with status {resp.status}", error_code=resp.status)
+                        raise ConnectionError(
+                            f"Connection test failed with status {resp.status}",
+                            error_code=resp.status,
+                        )
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             logger.error(f"Connection test failed due to network error: {err}")
-            raise ConnectionError(f"Connection test failed due to network error: {err}") from err
+            raise ConnectionError(
+                f"Connection test failed due to network error: {err}"
+            ) from err
 
     async def get_sensors_dict(self) -> Dict[str, str]:
         """Retrieve a dictionary of all available sensors mapped to their URIs."""
@@ -68,7 +81,9 @@ class MeinETAClient:
             raw_dict = root["eta"]["menu"]["fub"]
         except (KeyError, ValueError, ExpatError) as err:
             logger.error(f"Failed to parse menu structure: {err}")
-            raise ParsingError("Failed to parse menu structure", details=xml_data) from err
+            raise ParsingError(
+                "Failed to parse menu structure", details=xml_data
+            ) from err
 
         uri_dict = {}
         self._evaluate_xml_dict(raw_dict, uri_dict)
@@ -86,28 +101,40 @@ class MeinETAClient:
             logger.error(f"Failed to parse data for URI {uri}: {err}")
             raise ParsingError("Failed to parse data", details=xml_data) from err
 
-
     async def _fetch_xml(self, url: str) -> str:
         """Fetch XML data from a given URL."""
         max_retries = 3
+        retryable_status_codes = {500, 502, 503, 504, 408, 429}
+
         for attempt in range(max_retries):
             try:
-                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self._timeout)) as session:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self._timeout)
+                ) as session:
                     async with session.get(url) as resp:
                         if resp.status == 200:
                             return await resp.text()
-                        else:
-                            logger.warning(f"Attempt {attempt + 1}: Failed with status {resp.status}")
-                            raise InvalidResponseError(
-                                f"Failed request with status {resp.status}", error_code=resp.status
+                        elif resp.status in retryable_status_codes:
+                            logger.warning(
+                                f"Attempt {attempt + 1}: Retryable status {resp.status}"
                             )
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(2**attempt)  # Exponential Backoff
+                                continue
+                        raise InvalidResponseError(
+                            f"Failed request with status {resp.status}",
+                            error_code=resp.status,
+                        )
             except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                 logger.warning(f"Attempt {attempt + 1}: Network error: {err}")
                 if attempt == max_retries - 1:
-                    raise ConnectionError(f"Request to {url} failed after {max_retries} attempts.") from err
+                    raise ConnectionError(
+                        f"Request to {url} failed after {max_retries} attempts."
+                    ) from err
 
-
-    def _evaluate_xml_dict(self, xml_dict: Any, uri_dict: Dict[str, str], prefix: str = "") -> None:
+    def _evaluate_xml_dict(
+        self, xml_dict: Any, uri_dict: Dict[str, str], prefix: str = ""
+    ) -> None:
         """Evaluate XML recursively to build URI mappings."""
         if isinstance(xml_dict, list):
             for child in xml_dict:
@@ -121,7 +148,6 @@ class MeinETAClient:
             if "object" in xml_dict:
                 self._evaluate_xml_dict(xml_dict["object"], uri_dict, new_prefix)
 
-
     def _parse_data(self, data: Dict[str, Any]) -> Tuple[Any, Optional[str]]:
         """Parse a single data value from the meinETA API response.
 
@@ -132,8 +158,25 @@ class MeinETAClient:
         text_value = data.get("#text")
 
         float_units = {
-            "%", "A", "Hz", "Ohm", "Pa", "U/min", "V", "W", "W/m²", "bar",
-            "kW", "kWh", "kg", "l", "l/min", "mV", "m²", "s", "°C"
+            "%",
+            "A",
+            "Hz",
+            "Ohm",
+            "Pa",
+            "U/min",
+            "V",
+            "W",
+            "W/m²",
+            "bar",
+            "kW",
+            "kWh",
+            "kg",
+            "l",
+            "l/min",
+            "mV",
+            "m²",
+            "s",
+            "°C",
         }
 
         if unit in float_units and text_value is not None:
